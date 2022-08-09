@@ -1,0 +1,22 @@
+---
+title: "HW_8"
+author: "Greg_G"
+date: "2022-08-09"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Import dplyr and read in data:
+
+```{r pressure, echo=FALSE}
+library(dplyr)
+
+df <- read.csv("/Users/gregorygolden/.ssh/CSWorkshopRep/cs-workshop/workshop-08-intro-to-tidyverse/hw8_data.csv", check.names = FALSE)
+```
+
+
