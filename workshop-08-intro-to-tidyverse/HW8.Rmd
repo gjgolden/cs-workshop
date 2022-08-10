@@ -16,7 +16,81 @@ Import dplyr and read in data:
 ```{r pressure, echo=FALSE}
 library(dplyr)
 
-df <- read.csv("/Users/gregorygolden/.ssh/CSWorkshopRep/cs-workshop/workshop-08-intro-to-tidyverse/hw8_data.csv", check.names = FALSE)
+df <- read.csv("hw8_data.csv", check.names = FALSE)
 ```
 
+Questions:
+1. How many tissue samples are there by donor and what is their disease status?
+  • Display your answer as a data frame.
+  • Disease status should be ordered as follows: Normal, Potential, Affected.
 
+```{r}
+df_counts <- df %>%
+  group_by(donor) %>%
+  summarize(`Number of Tissues` = n_distinct(Tissue),
+            `Disease Status` = unique(`Disease Status`)) %>%
+  arrange(factor(`Disease Status`, levels = c("Normal", "Potential", "Affected")))
+
+df_counts
+```
+
+  
+2. What is the average AND standard deviation values for CD45+ and PBMCs (%CD45) when grouped by disease status and tissue?
+  • Display your answer as a data frame.
+  • Disease status should be ordered as follows: Normal, Potential, Affected.
+```{r}
+df_CD45 <- df %>%
+  group_by(`Disease Status`, Tissue) %>%
+  summarize("Mean CD45+" = mean(`CD45+`),
+            "SD CD45+" = sd(`CD45+`),
+            "Mean PBMCs (%CD45)" = mean(`CD45+`),
+            "SD PBMCs (%CD45)" = sd(`PBMCs (%CD45)`))
+
+df_CD45
+```
+  
+3. What is the mean difference between the Eosinophil populations between the different disease statuses, irrespective of tissue?
+  • Display your answer as a data frame.
+  • Disease status should be ordered as follows: Normal, Potential, Affected.
+```{r}
+df_Eos <- df %>%
+  group_by(`Disease Status`) %>%
+  summarize("Mean Eosinophils" = mean(Eosinophils)) %>%
+  arrange(factor(`Disease Status`, levels = c("Normal", "Potential", "Affected")))
+
+df_Eos <- df_Eos %>%
+  mutate("Mean Diff Normal" = `Mean Eosinophils` - `Mean Eosinophils`[1]) %>%
+  mutate("Mean Diff Potential" = `Mean Eosinophils` - `Mean Eosinophils`[2]) %>%
+  mutate("Mean Diff Affected" = `Mean Eosinophils` - `Mean Eosinophils`[3])
+
+df_Eos
+```
+
+4. When stratified by tissue and disease status, which donors have the highest CD8 Tem CD69+ proportions?
+  • Display your answer as a data frame.
+  • Disease status should be ordered as follows: Normal, Potential, Affected.
+```{r}
+df_Tem <- df %>%
+  group_by(`Disease Status`, Tissue) %>%
+  summarize("Donor Max CD8 Tem CD69+" = donor[which(`CD8 Tem CD69+` == max(`CD8 Tem CD69+`))]) %>%
+  arrange(factor(`Disease Status`, levels = c("Normal", "Potential", "Affected")))
+
+df_Tem
+```
+
+5. What are the average AND standard deviation values for all columns that start with “CD4 Tem” when grouped by disease status and tissue?
+  • Display your answer as a data frame.
+  • Disease status should be ordered as follows: Normal, Potential, Affected.
+  • There are 26 columns that start with “CD4 Tem”. You should not be manually specifying
+  “mean(‘CD4 Tem blah blah‘)” for each of those 26 columns. dplyr has additional ways to solve this.
+```{r}
+df_CD4Tem <- df %>%
+  group_by(`Disease Status`, Tissue) %>%
+  summarise(across(starts_with("CD4 Tem"), c(mean, sd))) %>%
+  rename_with(.cols = ends_with("_1"), function(x) paste0(x, " Mean")) %>%
+  rename_with(.cols = ends_with("_2"), function(x) paste0(x, " SD")) %>%
+  rename_with(function(x) gsub("_.", "", x)) %>%
+  arrange(factor(`Disease Status`, levels = c("Normal", "Potential", "Affected")))
+
+df_CD4Tem
+```
