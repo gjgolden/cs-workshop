@@ -33,6 +33,7 @@ library(dplyr)
 df <- read.csv("hw8_data.csv", check.names = FALSE)
 colnames(df)
 View(df)
+
 ```
 ## working with dplyr  
 ```{r}
