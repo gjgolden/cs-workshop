@@ -1,6 +1,8 @@
 ---
 title: "workshop-08"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -20,8 +22,6 @@ Today we will be covering the following topics:
 ## let's load the libraries  
 ```{r}
 library(dplyr)
-
-
 ```
 
   
@@ -29,5 +29,35 @@ library(dplyr)
 ```{r}
 # courtesy of @gregory-golden;
 # noised and randomised data from flow experiments; hw8_data.csv
-```
 
+df <- read.csv("hw8_data.csv", check.names = FALSE)
+colnames(df)
+View(df)
+```
+## working with dplyr  
+```{r}
+smallDF <- select(df, donor, Sex, 'Disease Status')
+smallDF
+
+filter(smallDF, Sex == "F")
+
+mutate(smallDF, donorExpanded = paste0("SCUBA_", donor))
+
+mutate(smallDF, Sex = ifelse(Sex == "M", "Male", "Female"))
+
+arrange(smallDF, desc(donor))
+```
+## piping
+```{r}
+jakeDF <- smallDF %>%
+  filter(Sex == "F") %>%
+  mutate(jakeWrath = 42) %>%
+  select(-jakeWrath) %>%
+  arrange(desc(donor))
+```
+## grouping verbs
+```{r}
+df %>%
+  group_by(`Disease Status`, Tissue) %>%
+  summarize(CD45posAvg = mean(`CD45+`))
+```
