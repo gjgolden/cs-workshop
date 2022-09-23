@@ -1,0 +1,341 @@
+---
+title: "hw9"
+author: "Geggy"
+date: "8/18/2022"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Instructions
+You are a data analyst for Ride Indego and they wanted to better understand their customer's riding habits to better design their service, allocate resources, and decide on which stations may need to be expanded. You are tasked with creating a comprehensive report to present to company executives.
+
+Your manager has provided you with this data file from the server (https://www.rideindego.com/about/data/) which is the 2022 Q2 (April - June) dataset. This file (`indego-trips-2022-q2.csv`) is located in the workshop-09 directory. Here's a head of the csv file:
+
+
+```{r, message = FALSE}
+library(dplyr)
+library(tidyr)
+library(forcats)
+library(stringr)
+library(ggplot2)
+library(cowplot)
+library(ggrepel)
+```
+
+
+```{r}
+df <- read.csv("indego-trips-2022-q2.csv")
+head(df) %>%
+  knitr::kable() %>%
+  kableExtra::kable_minimal("hover") %>%
+  kableExtra::scroll_box(width = "100%")
+```
+
+There are 257350 rows (i.e. trips) and 15 columns (metadata).
+
+As detailed from their website (taken verbatim), the columns of this file are as such:
+
+
+  - trip_id: Locally unique integer that identifies the trip
+  - duration: Length of trip in minutes
+  - start_time: The date/time when the trip began, presented in ISO 8601 format in local time
+  - end_time: The date/time when the trip ended, presented in ISO 8601 format in local time
+  - start_station: The station ID where the trip originated (for station name and more information on each station see the Station Table)
+  - start_lat: The latitude of the station where the trip originated
+  - start_lon: The longitude of the station where the trip originated
+  - end_station: The station ID where the trip terminated (for station name and more information on each station see the Station Table)
+  - end_lat: The latitude of the station where the trip terminated
+  - end_lon: The longitude of the station where the trip terminated
+  - bike_id:  Locally unique integer that identifies the bike
+  - plan_duration: The number of days that the plan the passholder is using entitles them to ride; 0 is used for a single ride plan (Walk-up)
+  - trip_route_category: “Round Trip” for trips starting and ending at the same station or “One Way” for all other trips
+  - passholder_type: The name of the passholder’s plan
+  - bike_type: The kind of bike used on the trip, including standard pedal-powered bikes or electric assist bikes
+  
+
+You have freedom to choose your own theme and plot unless explicity detailed in the question. Remember that your plots should be high quality, informative, and meaningful. Questions and graphs that are of interest:
+
+1. Display a plot of trip distance by duration. Describe what you see and if there are any interesting observations. Note that trip distance is calculated by converting latitude and longitude to radians. For instance, latitude (or longitude) in radians is `lat = latitude / (180/π)`. Longitude in radians will be referred to as `long`. If `lat1` and `long1` (all in radians) represent the starting latitude and longitude respectively, while `lat2` and `long2` (all in radians) represent the ending latitude and longitude respectively, then formula is `distance = 3963 * arccos((sin(lat1) * sin(lat2)) + cos(lat1) * cos(lat2) * cos(long2 – long1))`. The distance is in miles.
+  
+```{r, fig.width=5,fig.height=3}
+df <- df %>%
+  mutate(lat1 = start_lat / (180/pi),
+         long1 = start_lon / (180/pi),
+         lat2 = end_lat / (180/pi),
+         long2 = end_lon / (180/pi))
+
+df <- df %>%
+  mutate(distance = 3963 * acos((sin(lat1) * sin(lat2)) + cos(lat1) * cos(lat2) * cos(long2 - long1)))
+
+DurDis <- ggplot(df, mapping = aes(duration, distance)) +
+  geom_hex(aes(fill = stat(log(count))), size = 1, bins = 40) +
+  scale_x_continuous(trans = 'log2') +
+  ylim(-0.1, 8) +
+  xlab("Duration (min)") +
+  ylab("Distance (mi)") +
+  labs(title = "Trip Duration vs Distance") +
+  scale_fill_viridis_c(option = "magma",
+                       guide = guide_colorbar(title = "Trip Count")) +
+  theme_classic() +
+  theme(axis.text.x = element_text(face = "bold", vjust = 0.4, color = "black"),
+        axis.text.y = element_text(face = "bold", color = "black"),
+        axis.title.x = element_text(face = "bold", vjust = 0.4),
+        axis.title.y = element_text(face = "bold", vjust = 2),
+        plot.title = element_text(hjust = 0.5))
+
+DurDis
+
+```
+  
+2. What is the average speed (distance / duration) in miles per hour overall for a trip?
+```{r, results='asis'}
+df <- df %>%
+  mutate(mean_speed = distance/(duration/60))
+
+dfMean <- df %>%
+  filter(!is.na(mean_speed)) %>%
+  select(mean_speed)
+
+
+cat("\n", "     ", mean(dfMean$mean_speed), " miles per hour", sep = "")
+```
+
+3. If you bin starting time (i.e. 12am (inclusive) to 10am (exclusive) is morning, 10am (inclusive) to 6pm (exclusive) is midday, and 6pm (inclusive) to 12am (exclusive) is evening), are there any trends to average speed, duration, distance, and passholder_type? Display your findings in graph form (i.e. one or multiple plots).
+```{r}
+dfTrends <- df %>%
+  mutate(startTime_simple = str_extract(start_time, ".([0-1]?[0-9]|2[0-3]):[0-5][0-9]$")) %>%
+  mutate(startTime_simple = sub(":", "", startTime_simple)) %>%
+  mutate(startTime_simple = as.numeric(startTime_simple)) %>%
+  mutate(startTime_bin = case_when(startTime_simple >= 0 & startTime_simple < 1000 ~ "Morning",
+                                   startTime_simple >= 1000 & startTime_simple < 1800 ~ "Midday",
+                                   startTime_simple >= 1800 & startTime_simple < 2400 ~ "Evening")) %>%
+  filter(!is.na(mean_speed))
+
+#dfTrendsMetric <- dfTrends %>%
+#pivot_longer(c(mean_speed, duration, distance), names_to = "Metric", values_to = "Value")
+  
+
+startTimeMeanSpeed <- ggplot(dfTrends, aes(x = fct_relevel(startTime_bin, c("Morning", "Midday", "Evening")), y = mean_speed, color = startTime_bin)) +
+  geom_violin() +
+  scale_color_brewer(palette="Dark2") +
+  xlab("Ride Start Time") +
+  ylab("Average Speed (mph)") +
+  labs(title = "Average Speed by Start Time and Passholder Type") +
+  theme_classic() +
+  theme(axis.text.x = element_text(vjust = 0.4, color = "black"),
+        axis.text.y = element_text(face = "bold", color = "black"),
+        axis.title.x = element_text(face = "bold", vjust = -2),
+        axis.title.y = element_text(face = "bold", vjust = 3),
+        plot.title = element_text(hjust = 0.5),
+        legend.position = "none") +
+  stat_summary(fun = "mean", geom = "crossbar", width = 0.5) +
+  facet_wrap(~passholder_type) +
+  theme(strip.background = element_blank(),
+        strip.text.x = element_text(size = 10))
+
+startTimeDuration <- ggplot(dfTrends, aes(x = fct_relevel(startTime_bin, c("Morning", "Midday", "Evening")), y = duration, color = startTime_bin)) +
+  geom_violin() +
+  scale_color_brewer(palette="Dark2") +
+  scale_y_continuous(trans = "log2") +
+  xlab("Ride Start Time") +
+  ylab("Ride Time (min)") +
+  labs(title = "Ride Duration by Start Time and Passholder Type") +
+  theme_classic() +
+  theme(axis.text.x = element_text(vjust = 0.4, color = "black"),
+        axis.text.y = element_text(face = "bold", color = "black"),
+        axis.title.x = element_text(face = "bold", vjust = -2),
+        axis.title.y = element_text(face = "bold", vjust = 3),
+        plot.title = element_text(hjust = 0.5),
+        legend.position = "none") +
+  stat_summary(fun = "mean", geom = "crossbar", width = 0.5) +
+  facet_wrap(~passholder_type) +
+  theme(strip.background = element_blank(),
+        strip.text.x = element_text(size = 10))
+
+startTimeDistance <- ggplot(dfTrends, aes(x = fct_relevel(startTime_bin, c("Morning", "Midday", "Evening")), y = distance, color = startTime_bin)) +
+  geom_violin() +
+  scale_color_brewer(palette="Dark2") +
+  xlab("Ride Start Time") +
+  ylab("Ride Distance (miles)") +
+  labs(title = "Ride Distance by Start Time and Passholder Type") +
+  theme_classic() +
+  theme(axis.text.x = element_text(vjust = 0.4, color = "black"),
+        axis.text.y = element_text(face = "bold", color = "black"),
+        axis.title.x = element_text(face = "bold", vjust = -2),
+        axis.title.y = element_text(face = "bold", vjust = 3),
+        plot.title = element_text(hjust = 0.5),
+        legend.position = "none") +
+  stat_summary(fun = "mean", geom = "crossbar", width = 0.5) +
+  facet_wrap(~passholder_type) +
+  theme(strip.background = element_blank(),
+        strip.text.x = element_text(size = 10))
+```
+```{r, fig.width=6,fig.height=3}
+startTimeMeanSpeed
+```
+<br/>
+<br/>
+<br/>
+```{r, fig.width=6,fig.height=3}
+startTimeDuration
+```
+<br/>
+<br/>
+<br/>
+```{r, fig.width=6,fig.height=3}
+startTimeDistance 
+```
+
+4. Display a graph of the twenty most popular starting stations and the number of trips that originate there when grouped by starting time bin (see Question 3 for how to bin starting time)? Do the same for the twenty most popular ending stations.
+<br/>
+<br/>
+Below are the most popular starting stations per time of day: 
+```{r, fig.width=10,fig.height=3}
+dfStartStationRank <- dfTrends %>%
+  group_by(startTime_bin) %>%
+  count(start_station, sort = TRUE) %>%
+  slice_head(n = 20)
+
+dfStartStationRank$start_station <- as.character(dfStartStationRank$start_station) 
+
+dfStartStationRankMorning <- filter(dfStartStationRank, startTime_bin == "Morning") 
+dfStartStationRankMidday <- filter(dfStartStationRank, startTime_bin == "Midday") 
+dfStartStationRankEvening <- filter(dfStartStationRank, startTime_bin == "Evening") 
+
+StartStationRankMorning <- ggplot(dfStartStationRankMorning, 
+                           aes(x = fct_rev(fct_reorder(start_station, n)), y = n)) +
+  geom_col(fill = "#1B9E77",
+           color = "grey") +
+  labs(title = "Morning",
+       y = "Number of Rides") +
+  scale_y_continuous(expand = c(0,0)) +
+  theme_classic() +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_text(size = 8, angle = 45, hjust = 1.2, vjust = 1.2))
+
+StartStationRankMidday <- ggplot(dfStartStationRankMidday, 
+                           aes(x = fct_rev(fct_reorder(start_station, n)), y = n)) +
+  geom_col(fill = "#D95F02",
+           color = "grey") +
+  labs(title = "Midday") +
+  scale_y_continuous(expand = c(0,0)) +
+  theme_classic() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_text(size = 8, angle = 45, hjust = 1.2, vjust = 1.2))
+
+StartStationRankEvening <- ggplot(dfStartStationRankEvening, 
+                           aes(x = fct_rev(fct_reorder(start_station, n)), y = n)) +
+  geom_col(fill = "#7570B3",
+           color = "grey") +
+  labs(title = "Evening") +
+  scale_y_continuous(expand = c(0,0)) +
+  theme_classic() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_text(size = 8, angle = 45, hjust = 1.2, vjust = 1.2))
+
+pStart <- plot_grid(StartStationRankMorning,
+          StartStationRankMidday,
+          StartStationRankEvening, nrow = 1)
+pStart
+```
+<br/>
+<br/>
+Below are the most popular ending stations per time of day: 
+```{r, fig.width=10,fig.height=3}
+dfEndStationRank <- dfTrends %>%
+  group_by(startTime_bin) %>%
+  count(end_station, sort = TRUE) %>%
+  slice_head(n = 20)
+
+dfEndStationRank$end_station <- as.character(dfEndStationRank$end_station) 
+
+dfEndStationRankMorning <- filter(dfEndStationRank, startTime_bin == "Morning") 
+dfEndStationRankMidday <- filter(dfEndStationRank, startTime_bin == "Midday") 
+dfEndStationRankEvening <- filter(dfEndStationRank, startTime_bin == "Evening") 
+
+EndStationRankMorning <- ggplot(dfEndStationRankMorning, 
+                           aes(x = fct_rev(fct_reorder(end_station, n)), y = n)) +
+  geom_col(fill = "#1B9E77",
+           color = "grey") +
+  labs(title = "Morning",
+       y = "Number of Rides") +
+  scale_y_continuous(expand = c(0,0)) +
+  theme_classic() +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_text(size = 8, angle = 45, hjust = 1.2, vjust = 1.2))
+
+EndStationRankMidday <- ggplot(dfEndStationRankMidday, 
+                           aes(x = fct_rev(fct_reorder(end_station, n)), y = n)) +
+  geom_col(fill = "#D95F02",
+           color = "grey") +
+  labs(title = "Midday") +
+  scale_y_continuous(expand = c(0,0)) +
+  theme_classic() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_text(size = 8, angle = 45, hjust = 1.2, vjust = 1.2))
+
+EndStationRankEvening <- ggplot(dfEndStationRankEvening, 
+                           aes(x = fct_rev(fct_reorder(end_station, n)), y = n)) +
+  geom_col(fill = "#7570B3",
+           color = "grey") +
+  labs(title = "Evening") +
+  scale_y_continuous(expand = c(0,0)) +
+  theme_classic() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_text(size = 8, angle = 45, hjust = 1.2, vjust = 1.2))
+
+pEnd <- plot_grid(EndStationRankMorning,
+          EndStationRankMidday,
+          EndStationRankEvening, nrow = 1)
+pEnd
+```
+<br/>
+<br/>
+5. Display a graph showing the popularity of each bike (in terms of number of trips) and the total number of unique stations where they have stayed. Annotate the top 5 most popular bikes by their bike ID. Remember to take into consideration if the starting and ending station are different, especially if a bike has been used once only.
+<br/>
+<br/>
+```{r, fig.width=8,fig.height=4}
+dfBikePop <- dfTrends %>%
+  group_by(bike_id) %>%
+  summarize(TripAmt = n_distinct(trip_id), 
+            StationAmt = n_distinct(start_station))
+
+BikePop <- ggplot(dfBikePop, aes(x = TripAmt, 
+                                 y = StationAmt, 
+                                 label = bike_id)) +
+  geom_point(size = 1, color = "grey") +
+  geom_point(data = slice_max(dfBikePop, order_by = TripAmt, n = 5),
+             color = "red") +
+  scale_y_continuous(limits = c(0, 150)) +
+  geom_text_repel(data = slice_max(dfBikePop, order_by = TripAmt, n = 5),
+                  fontface = "bold") +
+  labs(title = "The Number of Trips and Stations per Bike") +
+  xlab("Number of Trips") +
+  ylab("Number of Stations") +
+  theme_classic() +
+  theme(axis.text.x = element_text(vjust = 0.4, color = "black"),
+        axis.text.y = element_text(color = "black"),
+        axis.title.x = element_text(face = "bold", vjust = -2),
+        axis.title.y = element_text(face = "bold", vjust = 3),
+        plot.title = element_text(hjust = 0.5))
+
+BikePop
+```
+
+6. Explore the data and find something interesting (that has not been explored above) to explain to me in a plot (can include multiple subplots if needed) + a 3 sentence summary of your findings.
+<br/>
+<br/>
+HPAP has taken my life, sorry I did not do this!
+<br/>
+<br/>
+  ```{r}
+```
